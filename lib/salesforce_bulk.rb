@@ -6,13 +6,19 @@ require 'salesforce_bulk/job'
 require 'salesforce_bulk/connection'
 
 module SalesforceBulk
-  # Your code goes here...
   class Api
-
     @@SALESFORCE_API_VERSION = '24.0'
 
-    def initialize(username, password, in_sandbox=false)
-      @connection = SalesforceBulk::Connection.new(username, password, @@SALESFORCE_API_VERSION, in_sandbox)
+    DEFAULT_OPTIONS = {
+      :sandbox => false,
+      :check_interval => 10,
+      :logger => nil
+    }
+
+    def initialize(username, password, options = {})
+      @options = DEFAULT_OPTIONS.merge options
+      @logger = @options[:logger]
+      @connection = SalesforceBulk::Connection.new(username, password, @@SALESFORCE_API_VERSION, @options)
     end
 
     def upsert(sobject, records, external_field, wait=false)
@@ -31,12 +37,12 @@ module SalesforceBulk
       self.do_operation('delete', sobject, records, nil)
     end
 
-    def query(sobject, query)
-      self.do_operation('query', sobject, query, nil)
+    def query(sobject, query, &block)
+      self.do_operation('query', sobject, query, nil, &block)
     end
 
-    def do_operation(operation, sobject, records, external_field, wait=false)
-      job = SalesforceBulk::Job.new(operation, sobject, records, external_field, @connection)
+    def do_operation(operation, sobject, records, external_field, wait=false, &block)
+      job = SalesforceBulk::Job.new(operation, sobject, records, external_field, @connection, @options)
 
       # TODO: put this in one function
       job_id = job.create_job()
@@ -50,15 +56,17 @@ module SalesforceBulk
       if wait or operation == 'query'
         while true
           state = job.check_batch_status()
-          #puts "\nstate is #{state}\n"
+          @logger.debug "state is #{state}" if @logger
           if state != "Queued" && state != "InProgress"
             break
           end
-          sleep(2) # wait x seconds and check again
+          @logger.debug "waiting for #{@options[:check_interval]}" if @logger
+          sleep(@options[:check_interval]) # wait x seconds and check again
         end
         
         if state == 'Completed'
-          job.get_batch_result()
+          @logger.debug "#{File.basename __FILE__}:#{__LINE__}: fetching result" if @logger
+          job.get_batch_result(&block)
         else
           return "There is an error in your job."
         end

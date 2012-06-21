@@ -2,8 +2,8 @@ module SalesforceBulk
 
   class Job
 
-    def initialize(operation, sobject, records, external_field, connection)
-
+    def initialize(operation, sobject, records, external_field, connection, options = {})
+      @logger = options[:logger]
       @@operation = operation
       @@sobject = sobject
       @@external_field = external_field
@@ -88,38 +88,41 @@ module SalesforceBulk
       response_parsed = XmlSimple.xml_in(response)
 
       begin
-        #puts "check: #{response_parsed.inspect}\n"
+        @logger.debug "check: #{response_parsed.inspect}\n" if @logger
         response_parsed['state'][0]
-      rescue Exception => e
-        #puts "check: #{response_parsed.inspect}\n"
-
+      rescue => e
+        @logger.debug "check: #{response_parsed.inspect}\n" if @logger
         nil
       end
     end
 
-    def get_batch_result()
+    def get_batch_result(&block)
       path = "job/#{@@job_id}/batch/#{@@batch_id}/result"
       headers = Hash["Content-Type" => "text/xml; charset=UTF-8"]
 
       response = @@connection.get_request(nil, path, headers)
 
-      if(@@operation == "query") # The query op requires us to do another request to get the results
+      if @@operation == "query"  # The query op requires us to do another request to get the results
         response_parsed = XmlSimple.xml_in(response)
-        result_id = response_parsed["result"][0]
-
-        path = "job/#{@@job_id}/batch/#{@@batch_id}/result/#{result_id}"
-        headers = Hash.new
-        headers = Hash["Content-Type" => "text/xml; charset=UTF-8"]
-        #puts "path is: #{path}\n"
-        
-        response = @@connection.get_request(nil, path, headers)
-        #puts "\n\nres2: #{response.inspect}\n\n"
-
+        csv = ''
+        @logger.debug "#{File.basename __FILE__}:#{__LINE__}: #{response_parsed.inspect}" if @logger
+        response_parsed["result"].each do |result_id|
+          path = "job/#{@@job_id}/batch/#{@@batch_id}/result/#{result_id}"
+          headers = Hash.new
+          headers = Hash["Content-Type" => "text/xml; charset=UTF-8"]
+          if block then
+            @@connection.get_request(nil, path, headers, &block)
+          else
+            csv << @@connection.get_request(nil, path, headers)
+          end
+        end
       end
 
-      response = response.lines.to_a[1..-1].join
-      csvRows = CSV.parse(response)
+      if block then
+        return nil
+      else
+        return CSV.parse(csv)
+      end
     end
-
   end
 end

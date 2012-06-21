@@ -7,17 +7,18 @@ module SalesforceBulk
     @@LOGIN_HOST = 'login.salesforce.com'
     @@INSTANCE_HOST = nil # Gets set in login()
 
-    def initialize(username, password, api_version, in_sandbox)
+    def initialize(username, password, api_version, options = {})
       @username = username
       @password = password
+      @options = options
+      @logger = @options[:logger]
       @session_id = nil
       @server_url = nil
       @instance = nil
       @@API_VERSION = api_version
       @@LOGIN_PATH = "/services/Soap/u/#{@@API_VERSION}"
       @@PATH_PREFIX = "/services/async/#{@@API_VERSION}/"
-      @@LOGIN_HOST = 'test.salesforce.com' if in_sandbox
-
+      @@LOGIN_HOST = 'test.salesforce.com' if @options[:sandbox]
       login()
     end
 
@@ -64,7 +65,7 @@ module SalesforceBulk
       https(host).post(path, xml, headers).body
     end
 
-    def get_request(host, path, headers)
+    def get_request(host, path, headers, &block)
       host = host || @@INSTANCE_HOST
       path = "#{@@PATH_PREFIX}#{path}"
 
@@ -72,7 +73,11 @@ module SalesforceBulk
         headers['X-SFDC-Session'] = @session_id;
       end
 
-      https(host).get(path, headers).body
+      if block then
+        https(host).request_get(path, headers) {|resp| resp.read_body(&block)}
+      else
+        https(host).get(path, headers).body
+      end
     end
 
     def https(host)
