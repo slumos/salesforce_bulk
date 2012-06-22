@@ -18,7 +18,7 @@ module SalesforceBulk
       @@API_VERSION = api_version
       @@LOGIN_PATH = "/services/Soap/u/#{@@API_VERSION}"
       @@PATH_PREFIX = "/services/async/#{@@API_VERSION}/"
-      @@LOGIN_HOST = 'test.salesforce.com' if @options[:sandbox]
+      @@LOGIN_HOST = 'test.salesforce.com' if @options['sandbox']
       login()
     end
 
